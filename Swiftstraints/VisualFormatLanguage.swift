@@ -16,20 +16,26 @@ private func vflKey(_ object: AnyObject) -> String {
 public struct VisualFormatLanguage : ExpressibleByStringInterpolation {
     
     let format: String
-    var metrics = NSHashTable<NSNumber>(options: [.copyIn, .objectPointerPersonality])
-    var views = NSHashTable<UIView>(options: NSPointerFunctions.Options.weakMemory)
+    var metrics = NSMapTable<NSString, NSNumber>(keyOptions: .copyIn, valueOptions: .copyIn)
+    var views = NSMapTable<NSString, UIView>(keyOptions: .copyIn, valueOptions: .weakMemory)
     var viewCount: Int = 0  // used to check if this VFL is still valid; since views won't persist the view pointers, if the view is deallocated, there will be an exception when constraints are created later
     
     public init(stringInterpolation strings: VisualFormatLanguage...) {
         var format = ""
         for vfl in strings {
             format.append(vfl.format)
-            for metric in vfl.metrics.allObjects {
-                metrics.add(metric)
+            if let keys = vfl.metrics.keyEnumerator().allObjects as? [NSString] {
+                for key in keys {
+                    metrics.setObject(vfl.metrics.object(forKey: key), forKey: key)
+                }
             }
-            for view in vfl.views.allObjects {
-                views.add(view)
-                viewCount += 1
+            if let keys = vfl.views.keyEnumerator().allObjects as? [NSString] {
+                for key in keys {
+                    if views.object(forKey: key) == nil {
+                        views.setObject(vfl.views.object(forKey: key), forKey: key)
+                        viewCount += 1
+                    }
+                }
             }
         }
         self.format = format
@@ -38,20 +44,19 @@ public struct VisualFormatLanguage : ExpressibleByStringInterpolation {
     public init<T>(stringInterpolationSegment expr: T) {
         if let view = expr as? UIView {
             format = vflKey(view)
-            views.add(view)
-            viewCount += 1
+            views.setObject(view, forKey: format as NSString)
         } else if let number = expr as? NSNumber {
             format = vflKey(number)
-            metrics.add(number)
+            metrics.setObject(number, forKey: format as NSString)
         } else {
             format = String(describing: expr)
         }
     }
     
-    func vflDictionary<T>(_ table: NSHashTable<T>) -> [String : AnyObject] {
+    func vflDictionary<T>(_ table: NSMapTable<NSString, T>) -> [String : AnyObject] {
         var dictionary = [String : AnyObject]()
-        for object in table.allObjects {
-            dictionary[vflKey(object)] = object
+        (table.keyEnumerator().allObjects as? [NSString])?.forEach { key in
+            dictionary[key as String] = table.object(forKey: key)
         }
         return dictionary
     }
